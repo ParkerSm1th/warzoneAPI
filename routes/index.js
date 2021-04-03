@@ -18,7 +18,7 @@ router.get('/ping', async function(req, res, next) {
   } catch(Error) {
     console.log(Error);
   }*/
-  res.json({ "local": true, "activision": activion})
+  res.json({ "local": true, "activision": activion});
 });
-
+ 
 module.exports = router;
