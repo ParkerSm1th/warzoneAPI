@@ -1,6 +1,19 @@
 var express = require('express');
 var router = express.Router();
+var request = require("request");
 const API = require('call-of-duty-api')();
+const mysql = require('mysql');
+require('dotenv').config();
+const connection = mysql.createConnection({
+    host: '31.220.50.95',
+    user: process.env.DBUSER,
+    password: process.env.DBPASS,
+    database: 'warzoneranks'
+});
+connection.connect((err) => {
+    if (err) throw err;
+    console.log('Connected!');
+});
 
 /* GET player stats. */
 router.get('/:platform/:username', async function(req, res, next) {
@@ -405,21 +418,79 @@ router.get('/:platform/:username/matches', async function(req, res, next) {
     try {
         let data = await API.MWcombatwz(username, platform);
         var matches = [];
-        data.matches.forEach(async function(match) {
-            let newMatch = {
-                matchID: match.matchID,
-                mode: match.mode,
-                utcStartSeconds: match.utcStartSeconds,
-                playerStats: {
-                    teamPlacement: match.playerStats.teamPlacement,
-                    kills: match.playerStats.kills,
-                    damageDone: match.playerStats.damageDone,
-                    score: match.playerStats.score
-                }
-            }
-            matches.push(newMatch);
+        let done = false;
+        let countOfLoaded = 0;
+        let errorLoadingMatches = false;
+        var loadMatches = new Promise((resolve, reject) => {
+            data.matches.forEach(async function(match) {
+                matches[match.matchID] = {matchID: match.matchID};
+                connection.query('SELECT * FROM matches WHERE match_id = ?', match.matchID, async (err,rows) => {
+                    if(err) throw err;
+                  
+                    if (rows && rows.length) {
+                        let data = rows[0];
+                        let newMatch = {
+                            matchID: match.matchID,
+                            mode: match.mode,
+                            utcStartSeconds: match.utcStartSeconds,
+                            playerStats: {
+                                teamPlacement: match.playerStats.teamPlacement,
+                                kills: match.playerStats.kills,
+                                damageDone: match.playerStats.damageDone,
+                                score: match.playerStats.score
+                            },
+                            ranking: {
+                                averageKD: data.medianKD,
+                                rank: data.rank,
+                                class: data.class,
+                                percentage: data.percentage
+                            }
+                        }
+                        matches[match.matchID] = newMatch;
+                    } else {
+                        let newMatch = {
+                            matchID: match.matchID,
+                            mode: match.mode,
+                            utcStartSeconds: match.utcStartSeconds,
+                            playerStats: {
+                                teamPlacement: match.playerStats.teamPlacement,
+                                kills: match.playerStats.kills,
+                                damageDone: match.playerStats.damageDone,
+                                score: match.playerStats.score
+                            },
+                            ranking: {
+                                averageKD: null,
+                                rank: "CLICK TO RANK",
+                                class: "unranked",
+                                percentage: ""
+                            }
+                        }
+                        matches[match.matchID] = newMatch;
+                    }
+                    countOfLoaded = countOfLoaded + 1;
+                    if (data.matches.length == countOfLoaded || errorLoadingMatches) {
+                        resolve();
+                    }
+                });
+                
+                
+            });
         });
-        res.json({error: false, data: matches});
+        
+        loadMatches.then(function() {
+            let newMatchArray = [];
+            for (match in matches) {
+                newMatchArray.push(matches[match]);
+            }
+            if (errorLoadingMatches) {
+                res.json({error: true, msg: "Tracker.gg's API is having some problems, please try again in a few minutes"});
+                return;
+            } else {
+                res.json({error: false, data: newMatchArray});
+            }
+        });
+        
+        
     } catch(Error) {
         console.log(Error);
         res.json({error: true, msg: Error});

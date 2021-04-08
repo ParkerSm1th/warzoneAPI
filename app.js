@@ -26,6 +26,7 @@ app.use(cors());
 app.use('/', indexRouter);
 app.use('/matches', matchesRouter);
 app.use('/stats', statsRouter);
+require('dotenv').config();
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
@@ -33,7 +34,7 @@ app.use(function(req, res, next) {
 });
 
 try {
-  API.login("parkermandfw@gmail.com", "Sj318908!");
+  API.login(process.env.ACTI_EMAIL, process.env.ACTI_PASS);
 } catch(Error) {
   console.log(Error);
 }
